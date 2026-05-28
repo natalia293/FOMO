@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Template — Flujo de Procesos</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #f8f8f6; font-family: 'Segoe UI', system-ui, sans-serif; color: #1a1a18; }
+  textarea, input, select { font-family: inherit; }
+  textarea { resize: none; }
+
+  /* GRID TABLE */
+  .grid-table { display: grid; grid-template-columns: 90px 110px 1fr 110px 120px 120px; }
+  .grid-headers { display: grid; grid-template-columns: 90px 110px 1fr 110px 120px 120px; border-bottom: 1px solid #d0cfc7; }
+  .col-header {
+    background: #1a2a4a; color: #fff; padding: 7px 9px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; border-right: 1px solid rgba(255,255,255,.1);
+  }
+  .col-header.dark2 { background: #243558; }
+  .col-header .sub { font-weight: 400; font-size: 9px; color: rgba(255,255,255,.5); text-transform: none; letter-spacing: 0; display: block; }
+
+  /* TOOLBAR */
+  .toolbar {
+    display: flex; gap: 5px; padding: 7px 10px;
+    background: #eeede8; border-bottom: 1px solid #d0cfc7;
+    flex-wrap: wrap; align-items: center;
+  }
+  .tb-label { font-size: 10px; font-weight: 700; color: #666660; text-transform: uppercase; letter-spacing: .05em; margin-right: 2px; }
+  .tb-sep { width: 1px; height: 16px; background: #d0cfc7; margin: 0 3px; }
+  .tb-btn {
+    display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px;
+    border-radius: 4px; border: 1.5px solid #d0cfc7;
+    background: #fff; font-size: 11px; color: #1a1a18;
+    cursor: pointer; white-space: nowrap; user-select: none;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .tb-btn.active { background: #3a5f9e; color: #fff; border-color: #3a5f9e; }
+  .tb-hint { font-size: 11px; color: #3a5f9e; font-weight: 600; background: #eef4fb; padding: 3px 8px; border-radius: 4px; }
+  .tb-tip  { font-size: 10px; color: #9a9891; margin-left: auto; }
+
+  /* CANVAS */
+  #wf-canvas {
+    position: absolute; inset: 0; overflow: hidden;
+    background-image: radial-gradient(circle, #d5d4cc 1px, transparent 1px);
+    background-size: 20px 20px;
+    cursor: default;
+  }
+  #wf-canvas.conn-mode { cursor: crosshair; }
+  #wf-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  #wf-svg .arrows-g { pointer-events: all; }
+
+  /* NODES */
+  .wf-node {
+    position: absolute; z-index: 10;
+    cursor: grab; user-select: none; touch-action: none;
+  }
+  .wf-node:active { cursor: grabbing; }
+  #wf-canvas.conn-mode .wf-node { cursor: crosshair; }
+  .node-task {
+    background: #eef4fb; border: 1.5px solid #3a5f9e; border-radius: 6px;
+    padding: 6px 10px; font-size: 11px; color: #1a1a18;
+    min-width: 88px; max-width: 148px; text-align: center; line-height: 1.4;
+  }
+  .node-start {
+    background: #e6f5eb; border: 1.5px solid #3d8050; border-radius: 50px;
+    padding: 6px 10px; font-size: 11px; color: #1a1a18;
+    min-width: 88px; max-width: 148px; text-align: center; line-height: 1.4;
+  }
+  .node-decision { width: 80px; height: 80px; position: relative; }
+  .node-decision .diamond {
+    width: 80px; height: 80px; background: #fef3cd; border: 1.5px solid #e8a020;
+    transform: rotate(45deg); position: absolute; top: 0; left: 0;
+  }
+  .node-decision .diamond-label {
+    position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; font-size: 10px; color: #1a1a18;
+    text-align: center; padding: 8px; line-height: 1.3; z-index: 1;
+  }
+  .node-selected .node-task,
+  .node-selected .node-start { outline: 2px solid #3a5f9e; outline-offset: 2px; }
+  .node-selected .node-decision { outline: 2px solid #3a5f9e; outline-offset: 4px; border-radius: 2px; }
+  .node-origin .node-task,
+  .node-origin .node-start { outline: 2.5px dashed #3a5f9e; outline-offset: 2px; }
+  .node-origin .node-decision { outline: 2.5px dashed #3a5f9e; outline-offset: 4px; border-radius: 2px; }
+
+  /* INLINE EDIT */
+  .node-edit {
+    border: none; outline: none; background: transparent;
+    text-align: center; font-family: inherit; color: #1a1a18;
+    width: 100%; resize: none; line-height: 1.4;
+  }
+
+  /* DATA COLS */
+  .data-col { display: flex; flex-direction: column; border-right: 1px solid #e8e7e0; }
+  .data-cell { flex: 1; border-bottom: 1px solid #e8e7e0; }
+  .data-cell:last-child { border-bottom: none; }
+  .data-cell textarea {
+    width: 100%; height: 100%; border: none; outline: none;
+    padding: 7px 8px; font-size: 11px; color: #1a1a18;
+    background: transparent; line-height: 1.5; display: block;
+  }
+
+  /* ACTOR COL */
+  .actor-col { background: #1a2a4a; display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,.08); }
+  .actor-row {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 4px;
+    padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,.07);
+  }
+  .actor-row:last-child { border-bottom: none; }
+  .actor-icon { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .actor-name { font-size: 9px; font-weight: 600; color: rgba(255,255,255,.82); text-align: center; line-height: 1.3; white-space: pre-line; }
+
+  /* CARDS */
+  .card { background: #fff; border: 1px solid #d0cfc7; border-radius: 10px; overflow: hidden; margin-bottom: .9rem; }
+  .card-header { background: #1a2a4a; padding: 1rem 1.4rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 2rem; }
+  .card-title { color: #fff; font-size: 19px; font-weight: 700; }
+  .card-sub { color: rgba(255,255,255,.55); font-size: 11px; margin-top: 3px; }
+
+  /* HEADER INPUTS */
+  .header-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; min-width: 300px; flex-shrink: 0; }
+  .field-label { font-size: 10px; font-weight: 700; color: rgba(255,255,255,.4); text-transform: uppercase; letter-spacing: .06em; display: block; margin-bottom: 2px; }
+  .field-input {
+    background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18);
+    border-radius: 4px; padding: 4px 7px; color: #fff; font-size: 12px;
+    outline: none; width: 100%; font-family: inherit;
+  }
+  .span2 { grid-column: span 2; }
+
+  /* CTX STRIP */
+  .ctx-strip { display: grid; grid-template-columns: repeat(5,1fr); border-top: 1px solid #d0cfc7; }
+  .ctx-cell { padding: .65rem .85rem; border-right: 1px solid #d0cfc7; display: flex; flex-direction: column; gap: 4px; }
+  .ctx-cell:last-child { border-right: none; }
+  .ctx-icon { width: 22px; height: 22px; border-radius: 5px; background: #eef4fb; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+  .ctx-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #1a1a18; }
+  .ctx-sub { font-size: 10px; color: #666660; }
+  .ctx-ta { flex: 1; border: 1px solid #e8e7e0; border-radius: 4px; padding: 4px 6px; font-size: 11px; color: #1a1a18; background: #f8f8f6; min-height: 40px; outline: none; }
+  .ctx-sel { border: 1px solid #e8e7e0; border-radius: 4px; padding: 4px 6px; font-size: 11px; color: #1a1a18; background: #f8f8f6; outline: none; height: 28px; }
+
+  /* BOTTOM PANELS */
+  .bottom-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .9rem; margin-bottom: .9rem; }
+  .panel { background: #fff; border: 1px solid #d0cfc7; border-radius: 10px; overflow: hidden; }
+  .panel-head { background: #eeede8; padding: 7px 11px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #666660; border-bottom: 1px solid #d0cfc7; }
+  .panel-body { padding: 9px 11px; }
+
+  /* LEGEND */
+  .legend-row { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 7px; }
+  .leg-circle  { width:15px;height:15px;border-radius:50%;background:#5caa6f;border:2px solid #3d8050;flex-shrink:0; }
+  .leg-rect    { width:20px;height:12px;border-radius:3px;background:#d6e4f5;border:1.5px solid #3a5f9e;flex-shrink:0; }
+  .leg-diamond { width:13px;height:13px;background:#f5d87a;border:1.5px solid #c9a020;transform:rotate(45deg);flex-shrink:0; }
+  .leg-dash    { width:22px;border-top:2px dashed #9a9891;flex-shrink:0; }
+  .leg-arrow   { width:22px;height:2px;background:#1a2a4a;flex-shrink:0;position:relative; }
+  .leg-arrow::after { content:'';position:absolute;right:0;top:-3px;border-top:4px solid transparent;border-bottom:4px solid transparent;border-left:6px solid #1a2a4a; }
+
+  /* FLOW TYPES */
+  .flow-process { border-left: 3px solid #3a5f9e; padding: 5px 8px; background: #eef4fb; border-radius: 0 4px 4px 0; margin-bottom: 7px; }
+  .flow-info    { border-left: 3px solid #9a9891; padding: 5px 8px; background: #f8f8f6; border-radius: 0 4px 4px 0; }
+  .flow-title { font-size: 11px; font-weight: 600; color: #1a1a18; margin-bottom: 2px; }
+  .flow-desc  { font-size: 11px; color: #666660; line-height: 1.4; }
+
+  /* OBS */
+  .obs-row { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 7px; }
+  .obs-dot { width: 6px; height: 6px; border-radius: 50%; background: #1a2a4a; margin-top: 5px; flex-shrink: 0; }
+  .obs-ta { flex: 1; border: 1px solid #e8e7e0; border-radius: 4px; padding: 5px 7px; font-size: 12px; color: #1a1a18; background: #f8f8f6; min-height: 30px; outline: none; }
+  .obs-add { font-size: 11px; color: #1a2a4a; background: none; border: 1px dashed #d0cfc7; border-radius: 4px; padding: 4px 10px; cursor: pointer; width: 100%; }
+
+  /* ACTIONS */
+  .actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+  .btn-clear { display:inline-flex;align-items:center;gap:5px;padding:8px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid #f5c0bb;background:#fff;color:#c0392b;font-family:inherit; }
+  .btn-pdf   { display:inline-flex;align-items:center;gap:5px;padding:8px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid #1a2a4a;background:#1a2a4a;color:#fff;font-family:inherit; }
+  .toast { font-size:12px;color:#3a5f9e;font-weight:500;background:#eef4fb;padding:6px 12px;border-radius:6px; }
+
+  /* INSTRUCTIONS */
+  .instructions { background: #1a2a4a; color: #fff; padding: .8rem 1.5rem; display: flex; gap: 1rem; }
+  .instr-title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+  .instr-sub { font-size: 11px; color: rgba(255,255,255,.65); line-height: 1.5; }
+  .instr-steps { display: flex; gap: 1rem; margin-top: 6px; flex-wrap: wrap; }
+  .instr-step { display: flex; align-items: center; gap: 5px; font-size: 11px; color: rgba(255,255,255,.78); }
+  .instr-num { background: rgba(255,255,255,.15); border-radius: 50%; width: 17px; height: 17px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+
+  /* WRAPPER */
+  .main-wrap { max-width: 1440px; margin: 0 auto; padding: 1.25rem 1.25rem 3rem; }
+  .canvas-wrap { position: relative; border-right: 1px solid #e8e7e0; overflow: hidden; }
+
+  @media print {
+    .instructions, .toolbar, .actions, .btn-clear, .btn-pdf { display: none !important; }
+    body { background: #fff; }
+  }
+</style>
+</head>
+<body>
+
+<!-- INSTRUCTIONS -->
+<div class="instructions">
+  <div style="font-size:18px;flex-shrink:0;margin-top:1px">📋</div>
+  <div>
+    <div class="instr-title">Cómo completar este template</div>
+    <div class="instr-sub">Mapeá el flujo real de un proceso operativo — no el ideal, el de hoy.</div>
+    <div class="instr-steps">
+      <div class="instr-step"><div class="instr-num">1</div>Completá encabezado y contexto</div>
+      <div class="instr-step"><div class="instr-num">2</div>Agregá nodos y arrastralos libremente</div>
+      <div class="instr-step"><div class="instr-num">3</div>Activá → Proceso o ⇢ Información, clic en origen → destino</div>
+      <div class="instr-step"><div class="instr-num">4</div>Doble clic para editar texto de un nodo</div>
+      <div class="instr-step"><div class="instr-num">5</div>Completá columnas y anotá fricciones</div>
+    </div>
+  </div>
+</div>
+
+<div class="main-wrap">
+
+  <!-- HEADER CARD -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Template — Flujo de procesos</div>
+        <div class="card-sub">Visualizá de punta a punta cómo fluye el trabajo para detectar fricciones, responsables y oportunidades de mejora.</div>
+      </div>
+      <div class="header-fields">
+        <div class="span2">
+          <label class="field-label">Proceso</label>
+          <input class="field-input" placeholder="Nombre del proceso…" />
+        </div>
+        <div>
+          <label class="field-label">Fecha</label>
+          <input class="field-input" id="inp-fecha" placeholder="Fecha…" />
+        </div>
+        <div>
+          <label class="field-label">Versión</label>
+          <input class="field-input" value="v1.0" placeholder="Versión…" />
+        </div>
+        <div class="span2">
+          <label class="field-label">Dueño del proceso (owner)</label>
+          <input class="field-input" placeholder="Dueño del proceso…" />
+        </div>
+      </div>
+    </div>
+    <div class="ctx-strip">
+      <div class="ctx-cell">
+        <div style="display:flex;align-items:center;gap:5px">
+          <div class="ctx-icon">🎯</div>
+          <div><div class="ctx-lbl">Objetivo</div><div class="ctx-sub">¿Para qué existe?</div></div>
+        </div>
+        <textarea class="ctx-ta" placeholder="¿Qué resultado busca este proceso?"></textarea>
+      </div>
+      <div class="ctx-cell">
+        <div style="display:flex;align-items:center;gap:5px">
+          <div class="ctx-icon">▶</div>
+          <div><div class="ctx-lbl">Disparador</div><div class="ctx-sub">¿Qué inicia el proceso?</div></div>
+        </div>
+        <textarea class="ctx-ta" placeholder="¿Qué evento o solicitud lo activa?"></textarea>
+      </div>
+      <div class="ctx-cell">
+        <div style="display:flex;align-items:center;gap:5px">
+          <div class="ctx-icon">👥</div>
+          <div><div class="ctx-lbl">¿Para quién?</div><div class="ctx-sub">¿Quién recibe el resultado?</div></div>
+        </div>
+        <textarea class="ctx-ta" placeholder="Usuario o área que recibe el resultado…"></textarea>
+      </div>
+      <div class="ctx-cell">
+        <div style="display:flex;align-items:center;gap:5px">
+          <div class="ctx-icon">📅</div>
+          <div><div class="ctx-lbl">Frecuencia</div><div class="ctx-sub">¿Cada cuánto ocurre?</div></div>
+        </div>
+        <select class="ctx-sel">
+          <option value="">— Seleccioná —</option>
+          <option>Diaria</option><option>Semanal</option><option>Quincenal</option>
+          <option>Mensual</option><option>Trimestral</option><option>Por demanda</option><option>Anual</option>
+        </select>
+      </div>
+      <div class="ctx-cell">
+        <div style="display:flex;align-items:center;gap:5px">
+          <div class="ctx-icon">ℹ</div>
+          <div><div class="ctx-lbl">Notas clave</div><div class="ctx-sub">Contexto importante</div></div>
+        </div>
+        <textarea class="ctx-ta" placeholder="Excepciones, restricciones, sistemas…"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN SECTION -->
+  <div class="card">
+
+    <!-- TOOLBAR -->
+    <div class="toolbar">
+      <span class="tb-label">Agregar</span>
+      <button class="tb-btn" onclick="addNode('task')">⬜ Tarea</button>
+      <button class="tb-btn" onclick="addNode('start')">🟢 Inicio / Fin</button>
+      <button class="tb-btn" onclick="addNode('decision')">◇ Decisión</button>
+      <div class="tb-sep"></div>
+      <span class="tb-label">Conectar</span>
+      <button class="tb-btn" id="btn-process" onclick="toggleConn('process')">→ Proceso</button>
+      <button class="tb-btn" id="btn-info"    onclick="toggleConn('info')">⇢ Información</button>
+      <div class="tb-sep"></div>
+      <span id="conn-hint" class="tb-hint" style="display:none"></span>
+      <span class="tb-tip">Arrastrá para mover · Doble clic = editar · Clic en flecha = eliminar</span>
+    </div>
+
+    <!-- COLUMN HEADERS -->
+    <div class="grid-headers">
+      <div class="col-header">Actores / áreas</div>
+      <div class="col-header">Entradas / Insumos<span class="sub">¿Qué se necesita?</span></div>
+      <div class="col-header dark2">Pasos del proceso<span class="sub">¿Qué se hace?</span></div>
+      <div class="col-header">Responsable<span class="sub">¿Quién lo hace?</span></div>
+      <div class="col-header">Herramienta / Canal<span class="sub">¿Con qué o por dónde?</span></div>
+      <div class="col-header" style="border-right:none">Salidas / Resultados<span class="sub">¿Qué se entrega?</span></div>
+    </div>
+
+    <!-- TABLE BODY -->
+    <div class="grid-table" id="table-body">
+      <!-- Built by JS -->
+    </div>
+  </div>
+
+  <!-- BOTTOM PANELS -->
+  <div class="bottom-grid">
+
+    <!-- LEYENDA -->
+    <div class="panel">
+      <div class="panel-head">🔷 Leyenda de símbolos</div>
+      <div class="panel-body">
+        <div class="legend-row"><div class="leg-circle"></div><span>Inicio / Fin</span></div>
+        <div class="legend-row"><div class="leg-rect"></div><span>Actividad / Tarea</span></div>
+        <div class="legend-row"><div class="leg-diamond"></div><span>Decisión</span></div>
+        <div class="legend-row"><div class="leg-dash"></div><span>Flujo de información</span></div>
+        <div class="legend-row"><div class="leg-arrow"></div><span>Flujo del proceso</span></div>
+      </div>
+    </div>
+
+    <!-- TIPOS DE FLUJO -->
+    <div class="panel">
+      <div class="panel-head">🔀 Tipos de flujo</div>
+      <div class="panel-body">
+        <div class="flow-process">
+          <div class="flow-title">→ Flujo del proceso</div>
+          <div class="flow-desc">Secuencia de actividades que generan el resultado.</div>
+        </div>
+        <div class="flow-info">
+          <div class="flow-title">- - → Flujo de información</div>
+          <div class="flow-desc">Datos, documentos o aprobaciones que circulan entre áreas.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OBSERVACIONES -->
+    <div class="panel">
+      <div class="panel-head">⚠ Observaciones / fricciones</div>
+      <div class="panel-body" id="obs-panel">
+        <div class="obs-row">
+          <div class="obs-dot"></div>
+          <textarea class="obs-ta" placeholder="Describí la fricción o dificultad observada…"></textarea>
+        </div>
+        <button class="obs-add" onclick="addObs()">+ Agregar observación</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACTIONS -->
+  <div class="actions">
+    <span id="toast" class="toast" style="display:none"></span>
+    <button class="btn-clear" onclick="clearAll()">🗑 Limpiar todo</button>
+    <button class="btn-pdf"   onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
+  </div>
+
+</div><!-- /main-wrap -->
+
+<script>
+// ─── STATE ────────────────────────────────────────────────────────────────────
+const ACTORS = [
+  { label: "Solicitante /\nUsuario", icon: "👤", bg: "#d6e4f5" },
+  { label: "Área /\nEquipo A",       icon: "👥", bg: "#c8ece3" },
+  { label: "Área /\nEquipo B",       icon: "🏢", bg: "#fde9c2" },
+  { label: "Área /\nEquipo C",       icon: "🔧", bg: "#e8e4fc" },
+  { label: "Externo",                icon: "🌐", bg: "#e8e7e0" },
+];
+const ROW_H = 110;
+
+let nodes = [], arrows = [], connMode = false, connInfoMode = false, connFrom = null;
+let selectedId = null, editingId = null;
+let _nId = 0, _aId = 0;
+const newNId = () => "n" + (++_nId);
+const newAId = () => "a" + (++_aId);
+
+// drag state
+let drag = null; // { id, ox, oy }
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('inp-fecha').value = new Date().toLocaleDateString('es-AR');
+  buildTable();
+  loadDemo();
+  renderAll();
+});
+
+// ─── BUILD STATIC TABLE ───────────────────────────────────────────────────────
+function buildTable() {
+  const tb = document.getElementById('table-body');
+
+  // Actor col
+  const actorCol = document.createElement('div');
+  actorCol.className = 'actor-col';
+  ACTORS.forEach(a => {
+    const row = document.createElement('div');
+    row.className = 'actor-row';
+    row.innerHTML = `<div class="actor-icon" style="background:${a.bg}">${a.icon}</div>
+                     <div class="actor-name">${a.label}</div>`;
+    actorCol.appendChild(row);
+  });
+  tb.appendChild(actorCol);
+
+  // Entradas col
+  tb.appendChild(makeDataCol('Documentos, datos, formularios…'));
+
+  // Canvas col
+  const canvasWrap = document.createElement('div');
+  canvasWrap.className = 'canvas-wrap';
+  canvasWrap.style.height = (ROW_H * ACTORS.length) + 'px';
+
+  const cvs = document.createElement('div');
+  cvs.id = 'wf-canvas';
+  cvs.innerHTML = `<svg id="wf-svg" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arr"  markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#1a2a4a"/></marker>
+      <marker id="arri" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#9a9891"/></marker>
+    </defs>
+    <g class="arrows-g" id="arrows-g"></g>
+  </svg>`;
+  cvs.addEventListener('click', onCanvasClick);
+  canvasWrap.appendChild(cvs);
+  tb.appendChild(canvasWrap);
+
+  // Responsable
+  tb.appendChild(makeDataCol('Nombre o área responsable…'));
+  // Herramienta
+  tb.appendChild(makeDataCol('Mail, planilla, sistema, WhatsApp…'));
+  // Salidas
+  tb.appendChild(makeDataCol('Documento, aprobación, notificación…', false));
+}
+
+function makeDataCol(ph, withBorder = true) {
+  const col = document.createElement('div');
+  col.className = 'data-col';
+  if (!withBorder) col.style.borderRight = 'none';
+  ACTORS.forEach((_, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'data-cell';
+    cell.style.height = ROW_H + 'px';
+    if (i === ACTORS.length - 1) cell.style.borderBottom = 'none';
+    const ta = document.createElement('textarea');
+    ta.placeholder = ph;
+    cell.appendChild(ta);
+    col.appendChild(cell);
+  });
+  return col;
+}
+
+// ─── DEMO ─────────────────────────────────────────────────────────────────────
+function loadDemo() {
+  nodes = [
+    { id: 'n1', type: 'start',    x: 65,  y: 12,  label: 'Inicio' },
+    { id: 'n2', type: 'task',     x: 25,  y: 80,  label: 'Solicitud recibida' },
+    { id: 'n3', type: 'decision', x: 18,  y: 175, label: '¿Completa?' },
+    { id: 'n4', type: 'task',     x: 165, y: 175, label: 'Pedir info faltante' },
+    { id: 'n5', type: 'task',     x: 25,  y: 295, label: 'Procesar' },
+    { id: 'n6', type: 'start',    x: 65,  y: 390, label: 'Fin' },
+  ];
+  arrows = [
+    { id:'a1', from:'n1', to:'n2', type:'process' },
+    { id:'a2', from:'n2', to:'n3', type:'process' },
+    { id:'a3', from:'n3', to:'n5', type:'process' },
+    { id:'a4', from:'n3', to:'n4', type:'process' },
+    { id:'a5', from:'n4', to:'n2', type:'info' },
+    { id:'a6', from:'n5', to:'n6', type:'process' },
+  ];
+  _nId = 6; _aId = 6;
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+function renderAll() {
+  renderNodes();
+  renderArrows();
+}
+
+function renderNodes() {
+  const cvs = document.getElementById('wf-canvas');
+  // Remove old node divs
+  cvs.querySelectorAll('.wf-node').forEach(el => el.remove());
+
+  nodes.forEach(node => {
+    const el = document.createElement('div');
+    el.className = 'wf-node';
+    el.dataset.id = node.id;
+    el.style.left = node.x + 'px';
+    el.style.top  = node.y + 'px';
+    if (selectedId === node.id) el.classList.add('node-selected');
+    if (connFrom   === node.id) el.classList.add('node-origin');
+
+    if (node.type === 'decision') {
+      el.innerHTML = `<div class="node-decision">
+        <div class="diamond"></div>
+        <div class="diamond-label" data-label-id="${node.id}">${escHtml(node.label)}</div>
+      </div>`;
+    } else {
+      const cls = node.type === 'start' ? 'node-start' : 'node-task';
+      el.innerHTML = `<div class="${cls}" data-label-id="${node.id}">${escHtml(node.label)}</div>`;
+    }
+
+    // Events
+    el.addEventListener('pointerdown', e => onNodePointerDown(e, node.id));
+    el.addEventListener('pointermove', e => onNodePointerMove(e, node.id));
+    el.addEventListener('pointerup',   onNodePointerUp);
+    el.addEventListener('dblclick',    e => { e.stopPropagation(); startEdit(node.id, el); });
+
+    cvs.appendChild(el);
+  });
+}
+
+function renderArrows() {
+  const g = document.getElementById('arrows-g');
+  g.innerHTML = '';
+  arrows.forEach(arr => {
+    const fn = nodes.find(n => n.id === arr.from);
+    const tn = nodes.find(n => n.id === arr.to);
+    if (!fn || !tn) return;
+
+    const fa = document.querySelector(`.wf-node[data-id="${arr.from}"]`);
+    const ta = document.querySelector(`.wf-node[data-id="${arr.to}"]`);
+    const fw = (fa ? fa.offsetWidth  : 90), fh = (fa ? fa.offsetHeight : 36);
+    const tw = (ta ? ta.offsetWidth  : 90), th = (ta ? ta.offsetHeight : 36);
+
+    const a = { cx: fn.x + fw/2, cy: fn.y + fh/2, w: fw, h: fh, x: fn.x, y: fn.y };
+    const b = { cx: tn.x + tw/2, cy: tn.y + th/2, w: tw, h: th, x: tn.x, y: tn.y };
+
+    const dx = b.cx - a.cx, dy = b.cy - a.cy;
+    let fx, fy, tx, ty;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      if (dx >= 0) { fx = a.x+a.w; fy = a.cy; tx = b.x;     ty = b.cy; }
+      else          { fx = a.x;     fy = a.cy; tx = b.x+b.w; ty = b.cy; }
+    } else {
+      if (dy >= 0) { fx = a.cx; fy = a.y+a.h; tx = b.cx; ty = b.y; }
+      else          { fx = a.cx; fy = a.y;     tx = b.cx; ty = b.y+b.h; }
+    }
+    const mx = (fx+tx)/2;
+    const d  = `M ${fx} ${fy} C ${mx} ${fy},${mx} ${ty},${tx} ${ty}`;
+    const isInfo = arr.type === 'info';
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d', d);
+    path.setAttribute('stroke', isInfo ? '#9a9891' : '#1a2a4a');
+    path.setAttribute('stroke-width', '1.8');
+    if (isInfo) path.setAttribute('stroke-dasharray', '5 4');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('marker-end', isInfo ? 'url(#arri)' : 'url(#arr)');
+    path.style.pointerEvents = 'stroke';
+    path.style.cursor = 'pointer';
+    path.dataset.arrowId = arr.id;
+    path.addEventListener('click', e => { e.stopPropagation(); deleteArrow(arr.id); });
+    g.appendChild(path);
+  });
+}
+
+// ─── NODE EVENTS ──────────────────────────────────────────────────────────────
+function onNodePointerDown(e, id) {
+  e.stopPropagation();
+  if (editingId) finishEdit();
+
+  if (connMode || connInfoMode) {
+    if (!connFrom) {
+      connFrom = id;
+      updateHint();
+      renderNodes();
+    } else if (connFrom === id) {
+      connFrom = null;
+      updateHint();
+      renderNodes();
+    } else {
+      arrows.push({ id: newAId(), from: connFrom, to: id, type: connInfoMode ? 'info' : 'process' });
+      connFrom = null;
+      updateHint();
+      renderAll();
+    }
+    return;
+  }
+
+  selectedId = id;
+  const node = nodes.find(n => n.id === id);
+  const rect = document.getElementById('wf-canvas').getBoundingClientRect();
+  drag = { id, ox: e.clientX - rect.left - node.x, oy: e.clientY - rect.top - node.y };
+  e.currentTarget.setPointerCapture(e.pointerId);
+  renderNodes();
+}
+
+function onNodePointerMove(e, id) {
+  if (!drag || drag.id !== id) return;
+  const rect = document.getElementById('wf-canvas').getBoundingClientRect();
+  const x = Math.max(0, e.clientX - rect.left - drag.ox);
+  const y = Math.max(0, e.clientY - rect.top  - drag.oy);
+  const node = nodes.find(n => n.id === id);
+  node.x = x; node.y = y;
+  // Update DOM position directly for performance, re-render arrows
+  const el = document.querySelector(`.wf-node[data-id="${id}"]`);
+  if (el) { el.style.left = x + 'px'; el.style.top = y + 'px'; }
+  renderArrows();
+}
+
+function onNodePointerUp() { drag = null; }
+
+function onCanvasClick(e) {
+  if (e.target === document.getElementById('wf-canvas') ||
+      e.target.tagName === 'svg' || e.target.closest('#wf-svg') === document.getElementById('wf-svg') && e.target.tagName !== 'path') {
+    if (editingId) finishEdit();
+    if (connFrom) { connFrom = null; updateHint(); renderNodes(); return; }
+    selectedId = null;
+    renderNodes();
+  }
+}
+
+// ─── INLINE EDIT ──────────────────────────────────────────────────────────────
+function startEdit(id, nodeEl) {
+  if (connMode || connInfoMode) return;
+  editingId = id;
+  const node = nodes.find(n => n.id === id);
+  const labelEl = nodeEl.querySelector(`[data-label-id="${id}"]`);
+  if (!labelEl) return;
+  const fontSize = node.type === 'decision' ? '10px' : '11px';
+  labelEl.innerHTML = '';
+  const ta = document.createElement('textarea');
+  ta.className = 'node-edit';
+  ta.value = node.label;
+  ta.style.fontSize = fontSize;
+  ta.rows = 2;
+  ta.addEventListener('blur', finishEdit);
+  ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); finishEdit(); } });
+  labelEl.appendChild(ta);
+  ta.focus();
+}
+
+function finishEdit() {
+  if (!editingId) return;
+  const ta = document.querySelector(`[data-label-id="${editingId}"] textarea`);
+  const node = nodes.find(n => n.id === editingId);
+  if (ta && node) node.label = ta.value.trim() || node.label;
+  editingId = null;
+  renderAll();
+}
+
+// ─── ADD / DELETE ─────────────────────────────────────────────────────────────
+function addNode(type) {
+  nodes.push({
+    id: newNId(), type,
+    x: 40 + Math.random() * 60,
+    y: 20 + Math.random() * 60,
+    label: type === 'start' ? 'Inicio / Fin' : type === 'decision' ? 'Decisión' : 'Actividad',
+  });
+  renderAll();
+}
+
+function deleteArrow(id) {
+  arrows = arrows.filter(a => a.id !== id);
+  renderArrows();
+}
+
+// ─── CONNECT ──────────────────────────────────────────────────────────────────
+function toggleConn(type) {
+  if (type === 'process') {
+    connMode = !connMode; connInfoMode = false;
+  } else {
+    connInfoMode = !connInfoMode; connMode = false;
+  }
+  connFrom = null;
+  document.getElementById('btn-process').classList.toggle('active', connMode);
+  document.getElementById('btn-info').classList.toggle('active', connInfoMode);
+  document.getElementById('wf-canvas').classList.toggle('conn-mode', connMode || connInfoMode);
+  updateHint();
+  renderNodes();
+}
+
+function updateHint() {
+  const hint = document.getElementById('conn-hint');
+  if (connMode || connInfoMode) {
+    hint.style.display = '';
+    hint.textContent = connFrom ? '✓ Origen seleccionado — hacé clic en el nodo destino' : 'Hacé clic en el nodo origen';
+  } else {
+    hint.style.display = 'none';
+  }
+}
+
+// ─── CLEAR ────────────────────────────────────────────────────────────────────
+function clearAll() {
+  nodes = []; arrows = [];
+  connFrom = null; connMode = false; connInfoMode = false;
+  document.getElementById('btn-process').classList.remove('active');
+  document.getElementById('btn-info').classList.remove('active');
+  document.getElementById('wf-canvas').classList.remove('conn-mode');
+  updateHint();
+  renderAll();
+  showToast('Todo limpiado ✓');
+}
+
+// ─── OBS ──────────────────────────────────────────────────────────────────────
+function addObs() {
+  const panel = document.getElementById('obs-panel');
+  const addBtn = panel.querySelector('.obs-add');
+  const row = document.createElement('div');
+  row.className = 'obs-row';
+  row.innerHTML = `<div class="obs-dot"></div><textarea class="obs-ta" placeholder="Describí la fricción o dificultad observada…"></textarea>`;
+  panel.insertBefore(row, addBtn);
+}
+
+// ─── TOAST ────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = '';
+  setTimeout(() => { t.style.display = 'none'; }, 2500);
+}
+
+// ─── UTILS ────────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>
